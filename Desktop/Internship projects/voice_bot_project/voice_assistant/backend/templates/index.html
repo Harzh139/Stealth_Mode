@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>🎙️ AI VoiceBot</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(to right, #f0f2f5, #dfe9f3);
+            padding: 40px;
+            margin: 0;
+            color: #333;
+        }
+        h2 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 15px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            margin: 10px 10px 20px 0;
+            cursor: pointer;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            transition: background 0.3s ease;
+        }
+        button:hover {
+            background: #1abc9c;
+        }
+        .result {
+            background: #f7f9fa;
+            border-left: 6px solid #1abc9c;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-top: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        audio {
+            margin-top: 20px;
+            width: 100%;
+            outline: none;
+        }
+        .wave {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 20px;
+            border-radius: 50%;
+            background: #1abc9c;
+            animation: pulse 1.2s infinite ease-in-out;
+            display: none;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.4); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🎙️ VoiceBot - Speak & Improve Your English</h2>
+        <div class="wave" id="micWave"></div>
+        <button onclick="startRecording()">🎤 Start Recording</button>
+        <button onclick="stopRecording()">⏹️ Stop</button>
+
+        <div id="original" class="result"></div>
+        <div id="corrected" class="result"></div>
+
+        <div id="correctnessBarContainer" style="margin-top: 15px;">
+            <div id="correctnessBar" style="height: 20px; border-radius: 10px; background: lightgray; overflow: hidden;">
+                <div id="correctnessFill" style="height: 100%; width: 0%; text-align: center; line-height: 20px; color: white; font-size: 14px;">
+                </div>
+            </div>
+        </div>
+
+        <div id="feedback" class="result"></div>
+        <audio id="audioPlayer" controls></audio>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+
+        async function startRecording() {
+            console.log("🎤 startRecording called");
+            audioChunks = [];
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log("🎧 Mic access granted:", stream);
+
+                // Let browser choose mime type
+                mediaRecorder = new MediaRecorder(stream);
+                console.log("🟢 MediaRecorder created:", mediaRecorder);
+
+                mediaRecorder.onstart = () => {
+                    console.log("🔴 Recording started");
+                };
+
+                mediaRecorder.ondataavailable = e => {
+                    console.log("📥 Data chunk received:", e.data.size);
+                    audioChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    console.log("⏹️ Recording stopped");
+                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    console.log("📦 Blob created:", blob.size, "bytes");
+
+                    const formData = new FormData();
+                    formData.append('audio', blob, 'recording.webm');
+
+                    const response = await fetch('/analyze', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+                    console.log("✅ Response received:", data);
+
+                    document.getElementById('original').innerText = '🗣️ Original: ' + data.original;
+                    document.getElementById('corrected').innerText = '✅ Corrected: ' + data.corrected;
+                    document.getElementById('feedback').innerText = '💡 Feedback: ' + data.feedback;
+
+                    // Ensure correctness is a number between 0 and 100
+                    let correctness = parseInt(data.correctness, 10);
+                    if (isNaN(correctness) || correctness < 0) correctness = 0;
+                    if (correctness > 100) correctness = 100;
+
+                    const fill = document.getElementById('correctnessFill');
+                    fill.style.width = correctness + '%';
+                    fill.innerText = correctness + '% Correct';
+
+                    if (correctness >= 75) {
+                        fill.style.background = 'green';
+                    } else if (correctness >= 50) {
+                        fill.style.background = 'orange';
+                    } else if (correctness >= 25) {
+                        fill.style.background = 'darkorange';
+                    } else {
+                        fill.style.background = 'red';
+                    }
+
+                    const audioPlayer = document.getElementById('audioPlayer');
+                    audioPlayer.src = data.audio_path + '?v=' + new Date().getTime();
+                    audioPlayer.load();
+                    audioPlayer.play();
+                };
+
+                mediaRecorder.start();
+                document.getElementById('micWave').style.display = 'block';
+
+            } catch (err) {
+                console.error("❌ Mic access or MediaRecorder failed:", err);
+                alert("Microphone access denied or not supported. Please check your browser settings.");
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                document.getElementById('micWave').style.display = 'none';
+            } else {
+                console.warn("🛑 Tried to stop an inactive recorder.");
+            }
+        }
+    </script>
+</body>
+</html>
